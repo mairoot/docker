@@ -32,10 +32,12 @@ ES_HOME=$ELK_HOME/elasticsearch
 LGS_HOME=$ELK_HOME/logstash
 KBN_HOME=$ELK_HOME/kibana
 
-$ES_HOME/bin/elasticsearch -d
+
+gosu elk $ES_HOME/bin/elasticsearch -d
 OUTPUT_LOGFILES+="$ES_HOME/logs/elasticsearch.log "
-$KBN_HOME/bin/kibana >> $KBN_HOME/logs/kibana.log &
+gosu elk $KBN_HOME/bin/kibana >> $KBN_HOME/logs/kibana.log &
 OUTPUT_LOGFILES+="$KBN_HOME/logs/kibana.log "
+chown elk:elk $ES_HOME -R
 
 touch $OUTPUT_LOGFILES
 tail -f $OUTPUT_LOGFILES &

@@ -6,7 +6,9 @@ ENV ELK_HOME=/data/elk
 ENV ES_HOME=$ELK_HOME/elasticsearch \
     LGS_HOME=$ELK_HOME/logstash \
     KBN_HOME=$ELK_HOME/kibana \
-    PATH=$ELK_HOME/bin:$PATH
+    PATH=$ELK_HOME/bin:$PATH \
+    GOSU_VERSION=1.11
+
 RUN mkdir -p $ELK_HOME && mkdir -p $ELK_HOME/elasticsearch/data && mkdir -p $ELK_HOME/logstash && mkdir -p $ELK_HOME/kibana/logs
 WORKDIR $ELK_HOME
 
@@ -15,13 +17,13 @@ RUN \
     echo "" > /etc/apt/sources.list && rm -f /etc/apt/sources.list.d/*; \
     #echo "deb http://mirrors.aliyun.com/debian/ jessie main non-free contrib" > /etc/apt/sources.list.d/aliyun.list; \
     echo "deb http://mirrors.aliyun.com/ubuntu/ xenial main" > /etc/apt/sources.list.d/aliyun.list; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends net-tools vim openjdk-8-jre wget; \
-    rm -rf /var/lib/apt/lists/*
-
+    apt-get update >/dev/null; \
+    apt-get install -y --no-install-recommends net-tools vim openjdk-8-jre wget tzdata >/dev/null; \
+    rm -rf /var/lib/apt/lists/*; \
+    ln -snf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && echo Asia/Shanghai > /etc/timezone; \
+    \
 # gosu setconf
-ENV GOSU_VERSION 1.11
-RUN set -ex; \
+  set -ex; \
         dpkgArch="$(dpkg --print-architecture | awk -F- '{ print $NF }')"; \
 	wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch"; \
 	#wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$dpkgArch.asc"; \
@@ -33,22 +35,17 @@ RUN set -ex; \
 	chmod +x /usr/local/bin/gosu; \
 	gosu nobody true
 
-# user run
-RUN groupadd -g 777 -r elk && useradd -r -d $ELK_HOME -u 777 -g elk elk && chown elk:elk $ELK_HOME -R && chown elk:elk /data -R
-USER elk
-
 # install elk
 COPY elasticsearch-*.tar.gz $ELK_HOME/elasticsearch.tar.gz
 COPY logstash-*.tar.gz $ELK_HOME/logstash.tar.gz
 COPY kibana-*.tar.gz $ELK_HOME/kibana.tar.gz
 
-RUN set -ex; \
+RUN \
     cd $ELK_HOME && tar -xzf elasticsearch.tar.gz -C "$ES_HOME" --strip-components=1; \
                     tar -xzf logstash.tar.gz -C "$LGS_HOME" --strip-components=1; \
                     tar -xzf kibana.tar.gz -C "$KBN_HOME" --strip-components=1; \
-    cd $ELK_HOME && rm -f *.tar.gz
-
-RUN \
+    cd $ELK_HOME && rm -f *.tar.gz; \
+\
     cd $ES_HOME \
           && grep "^-Xmx512M" config/jvm.options; \
              if [ $? != 0 ]; then \
@@ -70,15 +67,15 @@ RUN \
           && grep "^cluster.initial_master_nodes" config/elasticsearch.yml; \
              if [ $? != 0 ]; then \
                  sed -i '/^#cluster.initial_master_nodes/acluster.initial_master_nodes: ["node-1"]' config/elasticsearch.yml; \
-             fi
-RUN \
+             fi \
+;\
     cd $LGS_HOME \
           && grep "^-Xmx512M" config/jvm.options; \
              if [ $? != 0 ]; then \
                  sed -i 's/^-Xms1g/-Xms512M/g' config/jvm.options; \
                  sed -i 's/^-Xmx1g/-Xmx512M/g' config/jvm.options; \
-             fi 
-RUN \
+             fi \
+;\
     cd $KBN_HOME \
           && grep "^server.port" config/kibana.yml; \
              if [ $? != 0 ]; then \
@@ -91,8 +88,9 @@ RUN \
           && grep "^i18n.locale" config/kibana.yml; \
              if [ $? != 0 ]; then \
                  sed -i '/^#i18n.locale/ai18n.locale: "zh-CN"' config/kibana.yml; \
-             fi
-
+             fi \
+;\
+   groupadd -g 777 -r elk && useradd -r -d $ELK_HOME -u 777 -g elk elk && chown elk:elk $ELK_HOME -R && chown elk:elk /data -R
 
 COPY docker-entrypoint.sh /usr/local/bin/
 EXPOSE 9200 9300 5061 5000 9600
@@ -100,4 +98,3 @@ VOLUME /data/elk/elasticsearch/data
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["/bin/bash"]
-
